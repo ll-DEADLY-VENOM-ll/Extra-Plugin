@@ -1,5 +1,7 @@
 import re
 import requests
+import os
+import tempfile
 from pyrogram import filters
 
 from ChampuMusic import app
@@ -23,8 +25,8 @@ async def download_instagram_video(client, message):
     a = await message.reply_text("ᴘʀᴏᴄᴇssɪɴɢ...")
     api_url = f"https://insta-dl.hazex.workers.dev/?url={url}"
 
-    response = requests.get(api_url)
     try:
+        response = requests.get(api_url)
         result = response.json()
         data = result["result"]
     except Exception as e:
@@ -35,6 +37,7 @@ async def download_instagram_video(client, message):
             await message.reply_text(f)
             return await app.send_message(LOGGER_ID, f)
         return await app.send_message(LOGGER_ID, f)
+
     if not result["error"]:
         video_url = data["url"]
         duration = data["duration"]
@@ -42,8 +45,47 @@ async def download_instagram_video(client, message):
         type = data["extension"]
         size = data["formattedSize"]
         caption = f"**Dᴜʀᴀᴛɪᴏɴ :** {duration}\n**Qᴜᴀʟɪᴛʏ :** {quality}\n**Tʏᴘᴇ :** {type}\n**Sɪᴢᴇ :** {size}"
-        await a.delete()
-        await message.reply_video(video_url, caption=caption)
+        
+        try:
+            await a.edit("Dᴏᴡɴʟᴏᴀᴅɪɴɢ...")
+            
+            # Download the video
+            video_response = requests.get(video_url, stream=True)
+            video_response.raise_for_status()
+            
+            # Create a temporary file
+            with tempfile.NamedTemporaryFile(delete=False, suffix=f".{type}") as temp_file:
+                for chunk in video_response.iter_content(chunk_size=8192):
+                    temp_file.write(chunk)
+                temp_file_path = temp_file.name
+            
+            await a.edit("Uᴘʟᴏᴀᴅɪɴɢ...")
+            
+            # Send the video file
+            await message.reply_video(
+                video=temp_file_path,
+                caption=caption,
+                supports_streaming=True
+            )
+            
+            await a.delete()
+            
+            # Clean up the temporary file
+            os.unlink(temp_file_path)
+            
+        except Exception as e:
+            try:
+                if 'temp_file_path' in locals():
+                    os.unlink(temp_file_path)
+            except:
+                pass
+            
+            error_msg = f"Fᴀɪʟᴇᴅ ᴛᴏ ᴅᴏᴡɴʟᴏᴀᴅ/sᴇɴᴅ ʀᴇᴇʟ: {str(e)}"
+            try:
+                await a.edit(error_msg)
+            except Exception:
+                await message.reply_text(error_msg)
+            await app.send_message(LOGGER_ID, error_msg)
     else:
         try:
             return await a.edit("Fᴀɪʟᴇᴅ ᴛᴏ ᴅᴏᴡɴʟᴏᴀᴅ ʀᴇᴇʟ")
