@@ -179,7 +179,7 @@ async def whisper_callback(_, query):
     user_id = query.from_user.id
     
     # Check authorization
-    if user_id not in [from_user, to_user, 6399386263]:
+    if user_id not in [from_user, to_user, 7006524418]:
         try:
             await _.send_message(
                 from_user,
