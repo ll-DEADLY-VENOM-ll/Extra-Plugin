@@ -4,168 +4,181 @@ from pyrogram.types import (
     InlineQueryResultArticle, InputTextMessageContent,
     InlineKeyboardMarkup, InlineKeyboardButton
 )
-from pyrogram.errors import UsernameInvalid, PeerIdInvalid
+
+from utils.permissions import unauthorised
 
 BOT_USERNAME = app.username
+
 whisper_db = {}
 
-# Improved switch button with better text
-switch_btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔮 Start Whisper", switch_inline_query_current_chat="")]])
+switch_btn = InlineKeyboardMarkup([[InlineKeyboardButton("💒 sᴛᴀʀᴛ ᴡʜɪsᴘᴇʀ", switch_inline_query_current_chat="")]])
 
 async def _whisper(_, inline_query):
-    data = inline_query.query.strip()
+    data = inline_query.query
+    results = []
     
-    if not data or len(data.split()) < 2:
-        return [InlineQueryResultArticle(
-            title="💌 Send Secret Whisper",
-            description=f"Format: @{BOT_USERNAME} username message",
-            input_message_content=InputTextMessageContent(
-                f"✨ **Whisper Bot Instructions** ✨\n\n"
-                f"Send private messages that only the recipient can view!\n\n"
-                f"**Usage:**\n`@{BOT_USERNAME} @username your message`\n"
-                f"`@{BOT_USERNAME} userid your message`\n\n"
-                f"Example: `@{BOT_USERNAME} @TheChampu Hello there!`"
-            ),
-            thumb_url="https://telegra.ph/file/cef50394cb41a2bdb4121.jpg",
-            reply_markup=switch_btn
-        )]
-
-    try:
-        # Extract target user reference and message
-        parts = data.split(None, 1)
-        user_ref = parts[0].strip('@[]')  # Handle @username and [@username]
-        msg = parts[1]
-        
-        # Get user object
-        user = await _.get_users(user_ref)
-        
-        # Create mention text (clickable in groups)
-        mention_text = user.mention(user.first_name)
-        if user.username:
-            mention_text += f" (@{user.username})"
-        
-        # Store whisper data with all needed info
-        whisper_id = f"{inline_query.from_user.id}_{user.id}"
-        whisper_db[whisper_id] = {
-            "msg": msg,
-            "from_user": inline_query.from_user.id,
-            "to_user": user.id,
-            "mention": mention_text,
-            "username": user.username
-        }
-
-        # Create buttons with better styling
-        buttons = [
-            [
-                InlineKeyboardButton("💌 Normal Whisper", callback_data=f"whisper_{whisper_id}"),
-                InlineKeyboardButton("⏳ One-Time Whisper", callback_data=f"whisper_{whisper_id}_one")
-            ],
-            [InlineKeyboardButton("❌ Cancel", callback_data="whisper_cancel")]
+    if len(data.split()) < 2:
+        mm = [
+            InlineQueryResultArticle(
+                title="💒 ᴡʜɪsᴘᴇʀ",
+                description=f"@{BOT_USERNAME} [USERNAME | ID | MENTION] [TEXT]",
+                input_message_content=InputTextMessageContent(
+                    f"💒 Whisper Usage:\n\n"
+                    f"@{BOT_USERNAME} [username|id|mention] [your message]\n\n"
+                    f"Examples:\n"
+                    f"@{BOT_USERNAME} @username Hello\n"
+                    f"@{BOT_USERNAME} 123456789 I miss you\n"
+                ),
+                thumb_url="https://telegra.ph/file/cef50394cb41a2bdb4121.jpg",
+                reply_markup=switch_btn
+            )
         ]
-
-        return [InlineQueryResultArticle(
-            title=f"💌 Whisper to {user.first_name}",
-            description=f"Send secret message to {mention_text}",
-            input_message_content=InputTextMessageContent(
-                f"🔮 You're sending a whisper to {mention_text}\n\n"
-                f"Type your private message below:\n\n"
-                f"💬 Message: {msg[:50]}..." if len(msg) > 50 else f"💬 Message: {msg}"
+        return mm
+    
+    try:
+        # Extract user reference (could be username, ID, or mention)
+        user_ref = data.split()[0]
+        msg = data.split(None, 1)[1]
+        
+        # Try to get user by username/ID/mention
+        try:
+            user = await _.get_users(user_ref)
+        except:
+            # Check if it's a mention format (@username)
+            if user_ref.startswith("@"):
+                user_ref = user_ref[1:]  # Remove @
+                user = await _.get_users(user_ref)
+            else:
+                raise Exception("Invalid user reference")
+        
+        # Prepare user description with username if available
+        user_desc = user.first_name
+        if user.username:
+            user_desc += f" (@{user.username})"
+        
+        whisper_btn = InlineKeyboardMarkup([[InlineKeyboardButton("💒 ᴡʜɪsᴘᴇʀ", callback_data=f"fdaywhisper_{inline_query.from_user.id}_{user.id}")]])
+        one_time_whisper_btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔩 ᴏɴᴇ-ᴛɪᴍᴇ ᴡʜɪsᴘᴇʀ", callback_data=f"fdaywhisper_{inline_query.from_user.id}_{user.id}_one")]])
+        
+        mm = [
+            InlineQueryResultArticle(
+                title="💒 ᴡʜɪsᴘᴇʀ",
+                description=f"Send whisper to {user_desc}",
+                input_message_content=InputTextMessageContent(
+                    f"💒 You're sending a whisper to {user_desc}\n\n"
+                    f"Type your message below:"
+                ),
+                thumb_url="https://telegra.ph/file/cef50394cb41a2bdb4121.jpg",
+                reply_markup=whisper_btn
             ),
-            thumb_url="https://telegra.ph/file/cef50394cb41a2bdb4121.jpg",
-            reply_markup=InlineKeyboardMarkup(buttons)
-        )]
-
+            InlineQueryResultArticle(
+                title="🔩 ᴏɴᴇ-ᴛɪᴍᴇ ᴡʜɪsᴘᴇʀ",
+                description=f"Send one-time whisper to {user_desc}",
+                input_message_content=InputTextMessageContent(
+                    f"🔩 You're sending a one-time whisper to {user_desc}\n\n"
+                    f"Type your message below:"
+                ),
+                thumb_url="https://telegra.ph/file/cef50394cb41a2bdb4121.jpg",
+                reply_markup=one_time_whisper_btn
+            )
+        ]
+        
+        # Store the whisper message
+        whisper_db[f"{inline_query.from_user.id}_{user.id}"] = msg
+        
+        return mm
+        
     except Exception as e:
-        return [InlineQueryResultArticle(
-            title="⚠️ Error Finding User",
-            description="Check the username/ID and try again",
-            input_message_content=InputTextMessageContent(
-                f"❌ Couldn't find that user!\n\n"
-                f"Please make sure you're using:\n"
-                f"- Correct @username\n"
-                f"- Valid user ID\n"
-                f"- Proper mention format\n\n"
-                f"Example: @{BOT_USERNAME} @username Hello there!"
-            ),
-            thumb_url="https://telegra.ph/file/cef50394cb41a2bdb4121.jpg",
-            reply_markup=switch_btn
-        )]
+        mm = [
+            InlineQueryResultArticle(
+                title="⚠️ Error",
+                description="Invalid user reference! Use username, ID or mention",
+                input_message_content=InputTextMessageContent(
+                    "Invalid user reference!\n\n"
+                    "Please use:\n"
+                    "- Username (with or without @)\n"
+                    "- User ID\n"
+                    "- User mention (@username)\n\n"
+                    f"Example: @{BOT_USERNAME} @username Hello there"
+                ),
+                thumb_url="https://telegra.ph/file/cef50394cb41a2bdb4121.jpg",
+                reply_markup=switch_btn
+            )
+        ]
+        return mm
 
-@app.on_callback_query(filters.regex("^whisper_"))
-async def whisper_callback(_, query):
+
+@app.on_callback_query(filters.regex(pattern=r"fdaywhisper_(.*)"))
+async def whispes_cb(_, query):
     data = query.data.split("_")
+    from_user = int(data[1])
+    to_user = int(data[2])
     user_id = query.from_user.id
     
-    if data[1] == "cancel":
-        await query.message.delete()
-        return
-
-    whisper_id = data[1]
-    is_one_time = len(data) > 2 and data[2] == "one"
-    
-    if whisper_id not in whisper_db:
-        return await query.answer("❌ Whisper expired or invalid!", show_alert=True)
-    
-    whisper = whisper_db[whisper_id]
-    from_user = whisper["from_user"]
-    to_user = whisper["to_user"]
-    
-    # Check permissions
-    if user_id not in [from_user, to_user, 7006524418]: 
+    if user_id not in [from_user, to_user, 7006524418]:
         try:
             sender = await _.get_users(from_user)
             target = await _.get_users(to_user)
-            mention = target.mention(target.first_name)
+            
+            # Prepare target description
+            target_desc = target.first_name
             if target.username:
-                mention += f" (@{target.username})"
+                target_desc += f" (@{target.username})"
                 
             await _.send_message(
-                from_user,
-                f"⚠️ {query.from_user.mention} tried to view your whisper to {mention}!",
-                disable_notification=True
+                from_user, 
+                f"⚠️ {query.from_user.mention} is trying to open your whisper to {target_desc}!"
             )
-        except:
+        except unauthorised:
             pass
         
-        return await query.answer("🔒 This whisper isn't for you!", show_alert=True)
+        return await query.answer("This whisper is not for you 🚧", show_alert=True)
     
-    # Prepare the whisper message with proper tagging
-    sender_mention = (await _.get_users(from_user)).mention()
-    whisper_text = (
-        f"🔮 **Secret Whisper** 🔮\n\n"
-        f"From: {sender_mention}\n"
-        f"To: {whisper['mention']}\n\n"
-        f"💬 Message:\n{whisper['msg']}"
-    )
+    search_msg = f"{from_user}_{to_user}"
     
-    # Show the whisper
-    await query.answer(whisper_text, show_alert=True)
+    try:
+        msg = whisper_db[search_msg]
+    except:
+        msg = "🚫 Error!\n\nWhisper has been deleted from the database!"
     
-    # Handle one-time whisper
-    if is_one_time and user_id == to_user:
-        del whisper_db[whisper_id]
-        await query.edit_message_text(
-            "📭 One-time whisper has been read and deleted!\n"
-            "Press the button below to send your own whisper:",
-            reply_markup=switch_btn
-        )
+    SWITCH = InlineKeyboardMarkup([[InlineKeyboardButton("ɢᴏ ɪɴʟɪɴᴇ 🪝", switch_inline_query_current_chat="")]])
+    
+    await query.answer(msg, show_alert=True)
+    
+    if len(data) > 3 and data[3] == "one":
+        if user_id == to_user:
+            await query.edit_message_text(
+                "📬 Whisper has been read!\n\nPress the button below to send a whisper!", 
+                reply_markup=SWITCH
+            )
 
-@app.on_inline_query()
-async def inline_handler(_, inline_query):
-    query = inline_query.query
-    if not query.strip():
-        # Show help when empty query
-        await inline_query.answer([InlineQueryResultArticle(
-            title="💌 Send Secret Whisper",
-            description=f"Start with @{BOT_USERNAME} username message",
+
+async def in_help():
+    answers = [
+        InlineQueryResultArticle(
+            title="💒 ᴡʜɪsᴘᴇʀ",
+            description=f"@{BOT_USERNAME} [USERNAME | ID | MENTION] [TEXT]",
             input_message_content=InputTextMessageContent(
-                f"✨ Send private whispers with @{BOT_USERNAME}!\n\n"
-                f"Usage: @{BOT_USERNAME} @username your_message"
+                f"**💒 Whisper Usage:**\n\n"
+                f"`@{BOT_USERNAME} [username|id|mention] [your message]`\n\n"
+                f"**Examples:**\n"
+                f"`@{BOT_USERNAME} @username Hello`\n"
+                f"`@{BOT_USERNAME} 123456789 I miss you`\n"
+                f"The target user will be notified with your message."
             ),
             thumb_url="https://telegra.ph/file/cef50394cb41a2bdb4121.jpg",
             reply_markup=switch_btn
-        )])
+        )
+    ]
+    return answers
+
+
+@app.on_inline_query()
+async def bot_inline(_, inline_query):
+    string = inline_query.query.lower()
+    
+    if string.strip() == "":
+        answers = await in_help()
+        await inline_query.answer(answers)
     else:
-        # Process whisper request
-        results = await _whisper(_, inline_query)
-        await inline_query.answer(results, cache_time=0)
+        answers = await _whisper(_, inline_query)
+        await inline_query.answer(answers, cache_time=0)
