@@ -11,52 +11,69 @@ from utils.permissions import unauthorised
 BOT_USERNAME = app.username
 whisper_db = {}
 
-# Small caps conversion dictionary
-SMALL_CAPS = {
-    'a': 'ᴀ', 'b': 'ʙ', 'c': 'ᴄ', 'd': 'ᴅ', 'e': 'ᴇ', 'f': 'ғ', 'g': 'ɢ',
-    'h': 'ʜ', 'i': 'ɪ', 'j': 'ᴊ', 'k': 'ᴋ', 'l': 'ʟ', 'm': 'ᴍ', 'n': 'ɴ',
-    'o': 'ᴏ', 'p': 'ᴘ', 'q': 'ǫ', 'r': 'ʀ', 's': 's', 't': 'ᴛ', 'u': 'ᴜ',
-    'v': 'ᴠ', 'w': 'ᴡ', 'x': 'x', 'y': 'ʏ', 'z': 'ᴢ', ' ': ' '
-}
+async def create_whisper_notification(from_user, to_user):
+    """Create the whisper notification message"""
+    return (
+        f"📩 Whisper for {to_user.mention}\n\n"
+        f"{from_user.mention} sent you a private whisper!\n"
+        "Only you can view it by clicking below.\n\n"
+        f"💬 @{BOT_USERNAME}"
+    )
 
-def to_small_caps(text):
-    """Convert text to small caps style"""
-    return ''.join(SMALL_CAPS.get(c.lower(), c) for c in text)
-
-switch_btn = InlineKeyboardMarkup([[InlineKeyboardButton(
-    to_small_caps("switch to whisper"), 
-    switch_inline_query_current_chat=""
-)]])
+async def show_usage(inline_query):
+    """Show whisper usage instructions"""
+    help_msg = (
+        f"💌 Whisper Usage\n\n"
+        f"Format: @{BOT_USERNAME} [username/id/mention] [message]\n\n"
+        f"Examples:\n"
+        f"@{BOT_USERNAME} @username I love you\n"
+        f"@{BOT_USERNAME} 123456789 Check this out!"
+    )
+    
+    switch_btn = InlineKeyboardMarkup([[
+        InlineKeyboardButton(
+            "💌 Switch to Whisper", 
+            switch_inline_query_current_chat=""
+        )
+    ]])
+    
+    await inline_query.answer([InlineQueryResultArticle(
+        title="💌 How to use",
+        description="Send private whispers",
+        input_message_content=InputTextMessageContent(
+            help_msg,
+            parse_mode=ParseMode.MARKDOWN
+        ),
+        thumb_url="https://telegra.ph/file/cef50394cb41a2bdb4121.jpg",
+        reply_markup=switch_btn
+    )])
 
 async def _whisper(_, inline_query):
+    """Handle whisper inline queries"""
     data = inline_query.query.strip()
     
     if not data or data.lower() == "help":
-        return await in_help(inline_query)
+        return await show_usage(inline_query)
     
-    # Check both formats
-    parts = data.split(f"@{BOT_USERNAME}", 1)
-    if len(parts) == 2 and parts[1].strip():
-        user_identifier = parts[0].strip()
-        msg = parts[1].strip()
-    else:
-        try:
-            parts = data.split(None, 2)
-            if len(parts) < 2:
-                return await show_usage(inline_query)
-            user_identifier = parts[1] if parts[0] == f"@{BOT_USERNAME}" else parts[0]
-            msg = parts[2] if parts[0] == f"@{BOT_USERNAME}" else ' '.join(parts[1:])
-        except:
-            return await show_usage(inline_query)
-
     try:
+        # Parse command: @bot username message
+        parts = data.split(None, 2)
+        if len(parts) < 3:
+            return await show_usage(inline_query)
+            
+        user_identifier = parts[1]
+        msg = parts[2]
+        
+        # Remove @ if present
         if user_identifier.startswith('@'):
             user_identifier = user_identifier[1:]
         
+        # Get user object
         user = await _.get_users(user_identifier)
         
-        # Store whisper
-        whisper_db[f"{inline_query.from_user.id}_{user.id}"] = {
+        # Store whisper in database
+        whisper_key = f"{inline_query.from_user.id}_{user.id}"
+        whisper_db[whisper_key] = {
             "msg": msg,
             "from_user": inline_query.from_user.id,
             "to_user": user.id,
@@ -65,197 +82,168 @@ async def _whisper(_, inline_query):
         }
         
         # Create notification message
-        notification_msg = to_small_caps(
-            f"📩 ᴡʜɪsᴘᴇʀ ғᴏʀ {user.mention}\n\n"
-            f"{inline_query.from_user.mention} sᴇɴᴛ ʏᴏᴜ ᴀ ᴘʀɪᴠᴀᴛᴇ ᴡʜɪsᴘᴇʀ!\n"
-            "ᴏɴʟʏ ʏᴏᴜ ᴄᴀɴ ᴠɪᴇᴡ ɪᴛ ʙʏ ᴄʟɪᴄᴋɪɴɢ ʙᴇʟᴏᴡ."
-        )
+        notification_msg = await create_whisper_notification(inline_query.from_user, user)
         
-        buttons = [
+        # Create buttons
+        buttons = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton(
-                    to_small_caps(f"🔓 view whisper from {inline_query.from_user.first_name}"),
-                    callback_data=f"fdaywhisper_{inline_query.from_user.id}_{user.id}"
+                    f"🔓 View Whisper from {inline_query.from_user.first_name}",
+                    callback_data=f"whisper_{inline_query.from_user.id}_{user.id}"
                 )
             ],
             [
                 InlineKeyboardButton(
-                    to_small_caps("👤 view sender profile"),
+                    "👤 View Sender Profile",
                     url=f"tg://user?id={inline_query.from_user.id}"
+                ),
+                InlineKeyboardButton(
+                    "💌 Send Whisper",
+                    switch_inline_query_current_chat=f"@{BOT_USERNAME} @{user.username or user.id} "
                 )
             ]
-        ]
+        ])
         
-        one_time_buttons = [
+        one_time_buttons = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton(
-                    to_small_caps(f"⚠️ one-time whisper from {inline_query.from_user.first_name}"),
-                    callback_data=f"fdaywhisper_{inline_query.from_user.id}_{user.id}_one"
+                    f"⚠️ One-Time Whisper from {inline_query.from_user.first_name}",
+                    callback_data=f"whisper_{inline_query.from_user.id}_{user.id}_one"
                 )
             ],
             [
                 InlineKeyboardButton(
-                    to_small_caps("👤 view sender profile"),
+                    "👤 View Sender Profile",
                     url=f"tg://user?id={inline_query.from_user.id}"
                 )
             ]
-        ]
+        ])
         
+        # Create inline results
         results = [
             InlineQueryResultArticle(
-                title=to_small_caps("💌 normal whisper"),
-                description=to_small_caps(f"send to {user.first_name} (multiple views)"),
+                title="💌 Normal Whisper",
+                description=f"Send to {user.first_name} (multiple views)",
                 input_message_content=InputTextMessageContent(
                     notification_msg,
                     parse_mode=ParseMode.MARKDOWN
                 ),
                 thumb_url="https://telegra.ph/file/cef50394cb41a2bdb4121.jpg",
-                reply_markup=InlineKeyboardMarkup(buttons)
+                reply_markup=buttons
             ),
             InlineQueryResultArticle(
-                title=to_small_caps("⚠️ one-time whisper"),
-                description=to_small_caps(f"send to {user.first_name} (disappears after viewing)"),
+                title="⚠️ One-Time Whisper",
+                description=f"Send to {user.first_name} (disappears after viewing)",
                 input_message_content=InputTextMessageContent(
                     notification_msg,
                     parse_mode=ParseMode.MARKDOWN
                 ),
                 thumb_url="https://telegra.ph/file/cef50394cb41a2bdb4121.jpg",
-                reply_markup=InlineKeyboardMarkup(one_time_buttons)
+                reply_markup=one_time_buttons
             )
         ]
         
         await inline_query.answer(results, cache_time=0)
         
     except Exception as e:
-        await show_error(inline_query, str(e))
+        error_msg = (
+            "❌ Error\n\n"
+            "Failed to send whisper. Please check:\n"
+            "1. The user exists\n"
+            "2. You used the correct format\n\n"
+            f"Try: @{BOT_USERNAME} @username your message"
+        )
+        
+        await inline_query.answer([InlineQueryResultArticle(
+            title="❌ Error",
+            description="Failed to send whisper",
+            input_message_content=InputTextMessageContent(
+                error_msg,
+                parse_mode=ParseMode.MARKDOWN
+            ),
+            thumb_url="https://telegra.ph/file/cef50394cb41a2bdb4121.jpg",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton(
+                    "💌 How to use",
+                    switch_inline_query_current_chat="help"
+                )
+            ]])
+        )])
 
-async def show_usage(inline_query):
-    help_msg = to_small_caps(
-        f"💌 ᴡʜɪsᴘᴇʀ ᴜsᴀɢᴇ\n\n"
-        f"ғᴏʀᴍᴀᴛ 1: @{BOT_USERNAME} [ᴜsᴇʀ] [ᴍsɢ]\n"
-        f"ғᴏʀᴍᴀᴛ 2: [ᴜsᴇʀ] @{BOT_USERNAME} [ᴍsɢ]\n\n"
-        f"ᴇxᴀᴍᴘʟᴇs:\n"
-        f"@{BOT_USERNAME} @username ɪ ʟᴏᴠᴇ ʏᴏᴜ\n"
-        f"@username @{BOT_USERNAME} ᴄʜᴇᴄᴋ ᴛʜɪs ᴏᴜᴛ!"
-    )
-    
-    await inline_query.answer([InlineQueryResultArticle(
-        title=to_small_caps("💌 whisper help"),
-        description=to_small_caps("how to send whispers"),
-        input_message_content=InputTextMessageContent(
-            help_msg,
-            parse_mode=ParseMode.MARKDOWN
-        ),
-        thumb_url="https://telegra.ph/file/cef50394cb41a2bdb4121.jpg",
-        reply_markup=switch_btn
-    )])
-
-async def show_error(inline_query, error=""):
-    error_msg = to_small_caps(
-        "❌ ᴇʀʀᴏʀ\n\n"
-        "ᴄᴏᴜʟᴅɴ'ᴛ sᴇɴᴅ ᴡʜɪsᴘᴇʀ. ᴘʟᴇᴀsᴇ ᴄʜᴇᴄᴋ:\n"
-        "1. ᴛʜᴇ ᴜsᴇʀ ᴇxɪsᴛs\n"
-        "2. ʏᴏᴜ ᴜsᴇᴅ ᴀ ᴠᴀʟɪᴅ ғᴏʀᴍᴀᴛ"
-    )
-    
-    await inline_query.answer([InlineQueryResultArticle(
-        title=to_small_caps("❌ error"),
-        description=to_small_caps("failed to send whisper"),
-        input_message_content=InputTextMessageContent(
-            error_msg,
-            parse_mode=ParseMode.MARKDOWN
-        ),
-        thumb_url="https://telegra.ph/file/cef50394cb41a2bdb4121.jpg",
-        reply_markup=switch_btn
-    )])
-
-@app.on_callback_query(filters.regex(pattern=r"fdaywhisper_(.*)"))
+@app.on_callback_query(filters.regex(pattern=r"whisper_(.*)"))
 async def whisper_callback(_, query):
+    """Handle whisper callback queries"""
     data = query.data.split("_")
     from_user = int(data[1])
     to_user = int(data[2])
     user_id = query.from_user.id
     
+    # Check authorization
     if user_id not in [from_user, to_user, 6399386263]:
         try:
             await _.send_message(
                 from_user,
-                to_small_caps(
-                    f"{query.from_user.mention} ᴛʀɪᴇᴅ ᴛᴏ ᴠɪᴇᴡ ʏᴏᴜʀ ᴡʜɪsᴘᴇʀ ᴛᴏ {to_user}."
-                )
+                f"{query.from_user.mention} tried to view your whisper to {to_user}."
             )
         except unauthorised:
             pass
         
         return await query.answer(
-            to_small_caps("🔒 ᴛʜɪs ᴡʜɪsᴘᴇʀ ɪs ɴᴏᴛ ғᴏʀ ʏᴏᴜ!"), 
+            "🔒 This whisper is not for you!", 
             show_alert=True
         )
     
-    search_msg = f"{from_user}_{to_user}"
-    
+    # Retrieve whisper message
+    whisper_key = f"{from_user}_{to_user}"
     try:
-        whisper_data = whisper_db[search_msg]
+        whisper_data = whisper_db[whisper_key]
         sender_link = f"[{whisper_data['from_name']}](tg://user?id={whisper_data['from_user']})"
-        msg = to_small_caps(
-            f"💌 ᴡʜɪsᴘᴇʀ ғʀᴏᴍ {sender_link}:\n\n"
+        if whisper_data.get('from_username'):
+            sender_link += f" (@{whisper_data['from_username']})"
+        
+        msg = (
+            f"💌 Whisper from {sender_link}:\n\n"
             f"{whisper_data['msg']}\n\n"
-            f"🔗 ʀᴇᴘʟʏ ᴛᴏ sᴇɴᴅᴇʀ"
+            f"🔗 Reply to sender"
         )
     except:
-        msg = to_small_caps("⚠️ ᴡʜɪsᴘᴇʀ ɴᴏᴛ ғᴏᴜɴᴅ ᴏʀ ᴇxᴘɪʀᴇᴅ!")
+        msg = "⚠️ Whisper not found or expired!"
     
-    SWITCH = InlineKeyboardMarkup([[
-        InlineKeyboardButton(
-            to_small_caps("💌 send a whisper"), 
-            switch_inline_query_current_chat=""
-        ),
-        InlineKeyboardButton(
-            to_small_caps("👤 view sender"), 
-            url=f"tg://user?id={from_user}"
-        )
-    ]])
+    # Create reply markup
+    reply_markup = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "💌 Send Whisper", 
+                switch_inline_query_current_chat=""
+            ),
+            InlineKeyboardButton(
+                "👤 View Sender", 
+                url=f"tg://user?id={from_user}"
+            )
+        ]
+    ])
     
     await query.answer(msg, show_alert=True)
     
+    # Handle one-time whisper
     if len(data) > 3 and data[3] == "one" and user_id == to_user:
         try:
-            del whisper_db[search_msg]
+            del whisper_db[whisper_key]
         except:
             pass
         
         await query.edit_message_text(
-            to_small_caps("📝 ᴛʜɪs ᴏɴᴇ-ᴛɪᴍᴇ ᴡʜɪsᴘᴇʀ ʜᴀs ʙᴇᴇɴ ᴅᴇʟᴇᴛᴇᴅ!"),
-            reply_markup=SWITCH,
+            "📝 This one-time whisper has been deleted!",
+            reply_markup=reply_markup,
             parse_mode=ParseMode.MARKDOWN
         )
 
-async def in_help(inline_query):
-    help_msg = to_small_caps(
-        f"💌 ᴡʜɪsᴘᴇʀ ʜᴇʟᴘ\n\n"
-        f"sᴇɴᴅ ᴘʀɪᴠᴀᴛᴇ ᴍᴇssᴀɢᴇs ᴛʜᴀᴛ ᴏɴʟʏ ᴛʜᴇ ʀᴇᴄɪᴘɪᴇɴᴛ ᴄᴀɴ ᴠɪᴇᴡ.\n\n"
-        f"ғᴏʀᴍᴀᴛs:\n"
-        f"1. @{BOT_USERNAME} [ᴜsᴇʀ] [ᴍsɢ]\n"
-        f"2. [ᴜsᴇʀ] @{BOT_USERNAME} [ᴍsɢ]\n\n"
-        f"ᴛʜᴇ ʀᴇᴄɪᴘɪᴇɴᴛ ᴡɪʟʟ ʙᴇ ᴘʀᴏᴍɪɴᴇɴᴛʟʏ ᴍᴇɴᴛɪᴏɴᴇᴅ."
-    )
-    
-    await inline_query.answer([InlineQueryResultArticle(
-        title=to_small_caps("💌 whisper help"),
-        description=to_small_caps("how to send private whispers"),
-        input_message_content=InputTextMessageContent(
-            help_msg,
-            parse_mode=ParseMode.MARKDOWN
-        ),
-        thumb_url="https://telegra.ph/file/cef50394cb41a2bdb4121.jpg",
-        reply_markup=switch_btn
-    )])
-
 @app.on_inline_query()
 async def bot_inline(_, inline_query):
+    """Handle all inline queries"""
     string = inline_query.query.lower()
     
     if string.strip() == "" or string.startswith("help"):
-        await in_help(inline_query)
+        await show_usage(inline_query)
     else:
         await _whisper(_, inline_query)
