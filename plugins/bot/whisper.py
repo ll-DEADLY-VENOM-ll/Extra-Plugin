@@ -24,7 +24,7 @@ async def _whisper(_, inline_query):
                 f"Send private messages that only the recipient can view!\n\n"
                 f"**Usage:**\n`@{BOT_USERNAME} @username your message`\n"
                 f"`@{BOT_USERNAME} userid your message`\n\n"
-                f"Example: `@{BOT_USERNAME} @john Hello there!`"
+                f"Example: `@{BOT_USERNAME} @TheChampu Hello there!`"
             ),
             thumb_url="https://telegra.ph/file/cef50394cb41a2bdb4121.jpg",
             reply_markup=switch_btn
