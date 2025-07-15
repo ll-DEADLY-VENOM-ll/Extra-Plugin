@@ -153,18 +153,12 @@ async def whispes_cb(_, query):
     msg = whisper_db.get(search_msg, "🚫 Error!\n\nWhisper has been deleted from the database!")
 
     try:
-        from_user_data = await _.get_users(from_user)
-        to_user_data = await _.get_users(to_user)
-
-        from_user_text = get_user_display_name(from_user_data, include_link=False)
-        to_user_text = get_user_display_name(to_user_data, include_link=False)
 
         # Truncate message to fit within callback query limits
         truncated_msg = truncate_message(msg, 100)
         
         formatted_msg = (
-            f"🔮 Whisper\n\n"
-            f"💬 {truncated_msg}"
+            f"{truncated_msg}"
         )
 
         await query.answer(formatted_msg, show_alert=True)
