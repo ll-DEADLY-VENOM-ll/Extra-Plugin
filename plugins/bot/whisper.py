@@ -14,6 +14,29 @@ whisper_db = {}
 
 switch_btn = InlineKeyboardMarkup([[InlineKeyboardButton("💒 sᴛᴀʀᴛ ᴡʜɪsᴘᴇʀ", switch_inline_query_current_chat="")]])
 
+def get_user_display_name(user, include_link=True):
+    """Get formatted user display name"""
+    if include_link:
+        name = f"<a href='tg://user?id={user.id}'>{user.first_name}"
+        if user.last_name:
+            name += f" {user.last_name}"
+        name += "</a>"
+        if user.username:
+            name += f" (@{user.username})"
+    else:
+        name = user.first_name
+        if user.last_name:
+            name += f" {user.last_name}"
+        if user.username:
+            name += f" (@{user.username})"
+    return name
+
+def truncate_message(message, max_length=150):
+    """Truncate message for callback query"""
+    if len(message) <= max_length:
+        return message
+    return message[:max_length-3] + "..."
+
 async def _whisper(_, inline_query):
     data = inline_query.query
     results = []
@@ -50,9 +73,7 @@ async def _whisper(_, inline_query):
             else:
                 raise Exception("Invalid user reference")
         
-        user_desc = f"<a href='tg://user?id={user.id}'>{user.first_name}</a>"
-        if user.username:
-            user_desc += f" (@{user.username})"
+        user_desc = get_user_display_name(user)
         
         whisper_btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔮 ᴡʜɪsᴘᴇʀ", callback_data=f"fdaywhisper_{inline_query.from_user.id}_{user.id}")]])
         one_time_whisper_btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔩 ᴏɴᴇ-ᴛɪᴍᴇ ᴡʜɪsᴘᴇʀ", callback_data=f"fdaywhisper_{inline_query.from_user.id}_{user.id}_one")]])
@@ -117,9 +138,7 @@ async def whispes_cb(_, query):
         try:
             sender = await _.get_users(from_user)
             target = await _.get_users(to_user)
-            target_desc = f"<a href='tg://user?id={target.id}'>{target.first_name}</a>"
-            if target.username:
-                target_desc += f" (@{target.username})"
+            target_desc = get_user_display_name(target)
             await _.send_message(
                 from_user,
                 f"⚠️ {query.from_user.mention} is trying to open your whisper to {target_desc}!",
@@ -133,33 +152,39 @@ async def whispes_cb(_, query):
     search_msg = f"{from_user}_{to_user}"
     msg = whisper_db.get(search_msg, "🚫 Error!\n\nWhisper has been deleted from the database!")
 
-    from_user_data = await _.get_users(from_user)
-    to_user_data = await _.get_users(to_user)
+    try:
+        from_user_data = await _.get_users(from_user)
+        to_user_data = await _.get_users(to_user)
 
-    from_user_text = f"<a href='tg://user?id={from_user_data.id}'>{from_user_data.first_name}</a>"
-    if from_user_data.username:
-        from_user_text += f" (@{from_user_data.username})"
+        from_user_text = get_user_display_name(from_user_data, include_link=False)
+        to_user_text = get_user_display_name(to_user_data, include_link=False)
 
-    to_user_text = f"<a href='tg://user?id={to_user_data.id}'>{to_user_data.first_name}</a>"
-    if to_user_data.username:
-        to_user_text += f" (@{to_user_data.username})"
+        # Truncate message to fit within callback query limits
+        truncated_msg = truncate_message(msg, 100)
+        
+        formatted_msg = (
+            f"🔮 Whisper\n\n"
+            f"💬 {truncated_msg}"
+        )
 
-    formatted_msg = (
-        f"🔮 ᴡʜɪsᴘᴇʀ 🔮\n\n"
-        f"<b>From:</b> {from_user_text}\n"
-        f"<b>To:</b> {to_user_text}\n\n"
-        f"💬 {msg}"
-    )
+        await query.answer(formatted_msg, show_alert=True)
 
-    await query.answer(formatted_msg, show_alert=True)
-
-    if len(data) > 3 and data[3] == "one":
-        if user_id == to_user:
-            SWITCH = InlineKeyboardMarkup([[InlineKeyboardButton("ɢᴏ ɪɴʟɪɴᴇ 🪝", switch_inline_query_current_chat="")]])
-            await query.edit_message_text(
-                "📬 One-time whisper has been read and deleted!\n\nPress the button below to send a new whisper!",
-                reply_markup=SWITCH
-            )
+        # Handle one-time whisper deletion
+        if len(data) > 3 and data[3] == "one":
+            if user_id == to_user:
+                # Delete the whisper from database
+                if search_msg in whisper_db:
+                    del whisper_db[search_msg]
+                
+                SWITCH = InlineKeyboardMarkup([[InlineKeyboardButton("ɢᴏ ɪɴʟɪɴᴇ 🪝", switch_inline_query_current_chat="")]])
+                await query.edit_message_text(
+                    "📬 One-time whisper has been read and deleted!\n\nPress the button below to send a new whisper!",
+                    reply_markup=SWITCH
+                )
+    
+    except Exception as e:
+        # Fallback for any errors
+        await query.answer("Error reading whisper. Please try again.", show_alert=True)
 
 
 async def in_help():
